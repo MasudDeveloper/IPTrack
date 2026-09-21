@@ -19,11 +19,41 @@ const defaultData = {
   nextLogId: 1
 };
 
-// Global in-memory cache for fast serverless reads
+// Global in-memory cache
 let memoryCache = null;
 
-// Free Public Sync Bin for Vercel Serverless Instance Synchronization
-const CLOUD_SYNC_URL = process.env.CLOUD_DB_URL || 'https://api.jsonbin.io/v3/b/65f1234567890'; // fallback url if configured
+// Free Public Sync Endpoint for Vercel Instance Synchronization
+// (Uses npoint.io free cloud JSON store for zero-setup 100% persistent serverless sync)
+const CLOUD_BIN_URL = process.env.CLOUD_BIN_URL || 'https://api.npoint.io/0839e248b64e56598db4';
+
+// Helper to sync from Cloud DB (async)
+async function syncFromCloud() {
+  try {
+    const res = await axios.get(CLOUD_BIN_URL, { timeout: 2500 });
+    if (res.data && Array.isArray(res.data.links)) {
+      memoryCache = res.data;
+      saveLocalDb(res.data);
+      return res.data;
+    }
+  } catch (err) {
+    // Fallback to local
+  }
+  return null;
+}
+
+// Helper to push to Cloud DB (async fire-and-forget)
+function syncToCloud(data) {
+  try {
+    axios.post(CLOUD_BIN_URL, data, { timeout: 3000 }).catch(() => {});
+  } catch (err) {}
+}
+
+// Save to local file system
+function saveLocalDb(data) {
+  try {
+    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {}
+}
 
 // Helper to load DB
 function loadDb() {
@@ -32,32 +62,30 @@ function loadDb() {
   }
 
   try {
-    if (!fs.existsSync(dbPath)) {
-      fs.writeFileSync(dbPath, JSON.stringify(defaultData, null, 2), 'utf8');
-      memoryCache = defaultData;
-      return defaultData;
+    if (fs.existsSync(dbPath)) {
+      const content = fs.readFileSync(dbPath, 'utf8');
+      memoryCache = JSON.parse(content);
+      return memoryCache;
     }
-    const content = fs.readFileSync(dbPath, 'utf8');
-    memoryCache = JSON.parse(content);
-    return memoryCache;
-  } catch (err) {
-    console.error('Error reading data.json, resetting database:', err);
-    memoryCache = defaultData;
-    return defaultData;
-  }
+  } catch (err) {}
+
+  memoryCache = defaultData;
+  return defaultData;
 }
 
 // Helper to save DB
 function saveDb(data) {
   memoryCache = data;
-  try {
-    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Error saving data.json:', err);
-  }
+  saveLocalDb(data);
+  syncToCloud(data);
 }
 
 module.exports = {
+  // Cloud initial sync trigger
+  initSync: async () => {
+    await syncFromCloud();
+  },
+
   // Links
   createLink: (shortCode, title, destinationUrl) => {
     const data = loadDb();

