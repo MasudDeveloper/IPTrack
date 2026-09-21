@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
-// Support Vercel / Serverless read-only filesystem by writing to /tmp if needed
+// Support Vercel / Serverless read-only filesystem
 let dbPath = path.join(__dirname, 'data.json');
 
 try {
@@ -18,23 +19,37 @@ const defaultData = {
   nextLogId: 1
 };
 
+// Global in-memory cache for fast serverless reads
+let memoryCache = null;
+
+// Free Public Sync Bin for Vercel Serverless Instance Synchronization
+const CLOUD_SYNC_URL = process.env.CLOUD_DB_URL || 'https://api.jsonbin.io/v3/b/65f1234567890'; // fallback url if configured
+
 // Helper to load DB
 function loadDb() {
+  if (memoryCache) {
+    return memoryCache;
+  }
+
   try {
     if (!fs.existsSync(dbPath)) {
       fs.writeFileSync(dbPath, JSON.stringify(defaultData, null, 2), 'utf8');
+      memoryCache = defaultData;
       return defaultData;
     }
     const content = fs.readFileSync(dbPath, 'utf8');
-    return JSON.parse(content);
+    memoryCache = JSON.parse(content);
+    return memoryCache;
   } catch (err) {
     console.error('Error reading data.json, resetting database:', err);
+    memoryCache = defaultData;
     return defaultData;
   }
 }
 
 // Helper to save DB
 function saveDb(data) {
+  memoryCache = data;
   try {
     fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
   } catch (err) {

