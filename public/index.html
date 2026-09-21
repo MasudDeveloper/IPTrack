@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrackPulse - Link Tracker & IP Geolocation Analytics</title>
+  
+  <!-- Google Fonts & FontAwesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Leaflet CSS for Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Sidebar / Top Navigation Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-radar"></i>
+        </div>
+        <div class="brand-text">
+          <h1>TrackPulse</h1>
+          <span>IP Analytics & Link Tracker</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <a href="/api/export-csv" class="btn btn-outline" title="Export CSV Report" target="_blank">
+          <i class="fa-solid fa-file-csv"></i> Export CSV Report
+        </a>
+        <button id="btn-refresh" class="btn btn-outline" title="Refresh Data">
+          <i class="fa-solid fa-arrows-rotate"></i> Refresh
+        </button>
+        <span class="status-indicator">
+          <span class="dot pulse"></span> Live System Active
+        </span>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="main-content">
+      
+      <!-- Metrics Overview Bar -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon blue">
+            <i class="fa-solid fa-link"></i>
+          </div>
+          <div class="metric-info">
+            <span class="metric-label">Total Links</span>
+            <h3 id="stat-total-links" class="metric-value">0</h3>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon purple">
+            <i class="fa-solid fa-mouse-pointer"></i>
+          </div>
+          <div class="metric-info">
+            <span class="metric-label">Total Clicks</span>
+            <h3 id="stat-total-clicks" class="metric-value">0</h3>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon green">
+            <i class="fa-solid fa-network-wired"></i>
+          </div>
+          <div class="metric-info">
+            <span class="metric-label">Unique IPs Logged</span>
+            <h3 id="stat-unique-ips" class="metric-value">0</h3>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon orange">
+            <i class="fa-solid fa-shield-virus"></i>
+          </div>
+          <div class="metric-info">
+            <span class="metric-label">VPN / Proxy Detected</span>
+            <h3 id="stat-vpn-count" class="metric-value">0</h3>
+          </div>
+        </div>
+      </section>
+
+      <!-- Link Generator Section -->
+      <section class="card link-generator-card">
+        <div class="card-header">
+          <h2><i class="fa-solid fa-plus-circle"></i> Create Trackable Link</h2>
+          <p>Generate a shortened link. When opened, it records IP, ISP, location, screen resolution, GPU, and device details.</p>
+        </div>
+        <form id="create-link-form" class="link-form">
+          <div class="input-group">
+            <label for="input-target-url"><i class="fa-solid fa-globe"></i> Destination URL</label>
+            <input type="url" id="input-target-url" placeholder="https://example.com/target-page" required>
+          </div>
+          <div class="input-group">
+            <label for="input-title"><i class="fa-solid fa-tag"></i> Title / Note (Optional)</label>
+            <input type="text" id="input-title" placeholder="e.g. Case #104 Target Verification">
+          </div>
+          <div class="input-group">
+            <label for="input-slug"><i class="fa-solid fa-font"></i> Custom Alias (Optional)</label>
+            <input type="text" id="input-slug" placeholder="e.g. notice-case104">
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-bolt"></i> Generate Tracking Link
+          </button>
+        </form>
+
+        <div id="generated-result" class="generated-result hidden">
+          <div class="result-box">
+            <div class="result-details">
+              <span class="result-label">Tracking URL Created:</span>
+              <div class="result-url-wrapper">
+                <input type="text" id="result-tracking-url" readonly>
+                <button id="btn-copy-url" class="btn btn-copy">
+                  <i class="fa-regular fa-copy"></i> Copy
+                </button>
+              </div>
+            </div>
+            <a id="btn-test-link" href="#" target="_blank" class="btn btn-secondary">
+              <i class="fa-solid fa-external-link"></i> Test Click Link
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Layout: Map & Logs -->
+      <div class="content-split">
+        
+        <!-- Left / Top Column: Click Logs Table -->
+        <section class="card logs-section">
+          <div class="card-header flex-between">
+            <div>
+              <h2><i class="fa-solid fa-list-check"></i> Captured Click Logs</h2>
+              <p>Real-time list of IP metadata, VPN/Proxy flags, ISP, browser, OS, and location.</p>
+            </div>
+            <div class="filter-controls">
+              <select id="link-filter-select" class="select-input">
+                <option value="all">All Tracking Links</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="logs-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>IP Address</th>
+                  <th>Location</th>
+                  <th>ISP / Net</th>
+                  <th>Device & Hardware</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body">
+                <tr>
+                  <td colspan="6" class="text-center empty-state">No click logs recorded yet. Generate a link and test a click!</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Right / Bottom Column: Leaflet Map -->
+        <section class="card map-section">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-map-location-dot"></i> Live Geolocation Map</h2>
+            <p>100% Free OpenStreetMap tile view pinpointing recorded click locations.</p>
+          </div>
+          <div id="map" class="map-container"></div>
+        </section>
+
+      </div>
+
+      <!-- Links Management Table -->
+      <section class="card links-section">
+        <div class="card-header">
+          <h2><i class="fa-solid fa-link-slash"></i> Active Trackable Links</h2>
+          <p>Manage existing tracking links and view total clicks for each link.</p>
+        </div>
+        <div class="table-container">
+          <table class="links-table">
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Title / Label</th>
+                <th>Short Code</th>
+                <th>Destination URL</th>
+                <th>Clicks</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="links-table-body">
+              <tr>
+                <td colspan="6" class="text-center empty-state">No active tracking links found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Modal for Log Details -->
+  <div id="log-detail-modal" class="modal hidden">
+    <div class="modal-content card">
+      <div class="modal-header">
+        <h3 id="modal-title"><i class="fa-solid fa-shield-halved"></i> Advanced Forensic Details</h3>
+        <button id="modal-close-btn" class="modal-close">&times;</button>
+      </div>
+      <div id="modal-body" class="modal-body">
+        <!-- Details loaded dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Application JS -->
+  <script src="app.js"></script>
+</body>
+</html>
