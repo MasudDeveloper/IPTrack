@@ -7,9 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
   loadDashboardData();
   setupEventListeners();
-  
-  // NOTE: Auto-refresh interval REMOVED so data stays 100% fixed & static.
-  // Data updates ONLY when the user clicks the "Refresh" button or creates a new link!
 });
 
 // Initialize Leaflet Map with 100% FREE OpenStreetMap Tiles (No API key needed!)
@@ -163,7 +160,7 @@ async function loadLinks() {
             <button class="btn btn-outline btn-sm" onclick="copyToClipboard('${fullTrackingUrl}')">
               <i class="fa-regular fa-copy"></i> Copy
             </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteLink(${l.id})">
+            <button class="btn btn-danger btn-sm" onclick="deleteLink('${l.id}')">
               <i class="fa-solid fa-trash"></i>
             </button>
           </td>
@@ -209,7 +206,6 @@ function renderLogsTable(logs) {
     const timeAgo = formatTime(log.created_at);
     const location = (log.city && log.city !== 'Unknown') ? `${log.city}, ${log.country}` : log.country;
     const vpnTag = log.is_proxy ? `<span class="vpn-badge">VPN/PROXY</span>` : '';
-    const cameraTag = log.camera_snap ? `<i class="fa-solid fa-camera" style="color:#10b981; margin-left:4px;" title="Camera Snap Captured"></i>` : '';
     const deviceDisplay = (log.device_model && log.device_model !== 'N/A' && log.device_model !== 'Generic Device') 
       ? `${log.device_model}` 
       : `${log.browser} (${log.os})`;
@@ -226,7 +222,7 @@ function renderLogsTable(logs) {
           ${escapeHtml(log.isp)}
         </td>
         <td>
-          <span class="device-tag"><i class="fa-solid fa-${getDeviceIcon(log.device)}"></i> ${escapeHtml(deviceDisplay)} ${cameraTag}</span>
+          <span class="device-tag"><i class="fa-solid fa-${getDeviceIcon(log.device)}"></i> ${escapeHtml(deviceDisplay)}</span>
         </td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="showLogModal('${log.id}')">
@@ -278,20 +274,9 @@ window.showLogModal = function(logId) {
   if (!log) return;
 
   const modalBody = document.getElementById('modal-body');
-  
-  let cameraPhotoHtml = '';
-  if (log.camera_snap) {
-    cameraPhotoHtml = `
-      <div class="detail-item" style="grid-column: span 2; text-align:center;">
-        <span>Captured Camera Snapshot</span>
-        <img src="${log.camera_snap}" style="max-width:100%; height:auto; border-radius:8px; border:2px solid #10b981; margin-top:8px;">
-      </div>
-    `;
-  }
 
   modalBody.innerHTML = `
     <div class="modal-grid">
-      ${cameraPhotoHtml}
       <div class="detail-item">
         <span>IP Address & Security</span>
         <strong style="color:#38bdf8;">${escapeHtml(log.ip_address)} ${log.is_proxy ? '<span style="color:#ef4444;">(VPN/Proxy)</span>' : ''}</strong>
