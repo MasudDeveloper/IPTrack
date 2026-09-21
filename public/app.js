@@ -8,10 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDashboardData();
   setupEventListeners();
   
-  // Auto refresh every 10 seconds
-  setInterval(() => {
-    loadDashboardData();
-  }, 10000);
+  // NOTE: Auto-refresh interval REMOVED so data stays 100% fixed & static.
+  // Data updates ONLY when the user clicks the "Refresh" button or creates a new link!
 });
 
 // Initialize Leaflet Map with 100% FREE OpenStreetMap Tiles (No API key needed!)
@@ -80,7 +78,7 @@ function setupEventListeners() {
     }, 2000);
   });
 
-  // Refresh Button
+  // Refresh Button (Manual Refresh Trigger)
   const refreshBtn = document.getElementById('btn-refresh');
   refreshBtn.addEventListener('click', () => {
     loadDashboardData();
@@ -231,7 +229,7 @@ function renderLogsTable(logs) {
           <span class="device-tag"><i class="fa-solid fa-${getDeviceIcon(log.device)}"></i> ${escapeHtml(deviceDisplay)} ${cameraTag}</span>
         </td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="showLogModal(${log.id})">
+          <button class="btn btn-outline btn-sm" onclick="showLogModal('${log.id}')">
             <i class="fa-solid fa-circle-info"></i> Details
           </button>
         </td>
@@ -276,7 +274,7 @@ function updateMapMarkers(logs) {
 
 // Modal View Details
 window.showLogModal = function(logId) {
-  const log = (window.currentLogs || []).find(l => l.id === logId);
+  const log = (window.currentLogs || []).find(l => String(l.id) === String(logId));
   if (!log) return;
 
   const modalBody = document.getElementById('modal-body');
